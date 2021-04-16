@@ -1,0 +1,9 @@
+.idea
+pdfs/inbox/*
+!pdfs/inbox/.gitkeep
+pdfs/processing/*
+!pdfs/processing/.gitkeep
+pdfs/outbox/check_copies/*
+!pdfs/outbox/check_copies/.gitkeep
+pdfs/outbox/time_cards/*
+!pdfs/outbox/time_cards/.gitkeep

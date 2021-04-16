@@ -1,0 +1,99 @@
+©2016 Entertainment Partners.All Rights Reserved.
+R
+A
+TE
+ Project
+ Name
+ Loan Out
+LOVE LIFE S2
+LIDDIARD, JOAQUIN SSN
+FEIN
+***-**-9331
+Union/Job/Sch
+ Title
+817/3501/64
+Contract Name | Contract Type
+H
+R
+S
+50.8300
+0.00
+4092.37
+Per Hour
+Per Day
+Per Week
+64.0
+Per Day
+Per Week
+WE 030621 817 TEAM TRANSPORTATION
+G
+L
+CO LO G/L EPI DETL SET IN F2 TI F4
+01 01 820     3503
+Check
+CommentsLOC 817 MAJORS TELEVISION - < 4
+SEASONS
+CO-CAPTAIN
+03/13/2021Pay Period Ending :
+Batch : Dept :
+Meal 2 Occ
+CodeWrap
+Last
+ManInD
+ay
+Meal 1
+Re-RateTy
+pe
+InDate Out
+Account Number
+CO LO G/L EPI DETL SET IN F2 TI F4 Pa
+y
+Out N
+D
+M
+ 2
+C
+on
+d
+N
+D
+M
+ 1Work
+Location CallO
+ff
+StMo3/8NY NY NY
+StTu3/9NY NY NY
+StWe3/10NY NY NY
+StTh3/11NY NY NY
+StFri3/12NY NY NY
+StSa3/13NY NY NY
+StSu3/7NY NY NY
+Note:A       in the NDM1 or NDM2 field indicates the employee was relieved of duty for atleast 30 minutes. Totals:
+TTL
+HRS M
+PV
+ 1
+M
+PV
+2
+FC
+0.0
+Work Loc CO LO G/L EPI DETL SET IN F2 TI F4 AmountHrsPayType
+Summary Breakage
+RateDate
+NY NY NY 01 01 820 894 3504 233       F1 50.8300 REG 25.6 1,301.253/9
+NY NY NY 01 01 820 894 3504 233       F1 45.9900 DOUBLE 1.5 137.973/9
+Total Wages:
+Total Other Payments:
+Total Deductions:
+    Grand Total:
+27.1 1,439.22
+1,439.22
+Split Coding
+Date CO LO G/L EPI DETL SET IN F2 TI F4 % Hours
+CO LO G/L EPI DETL SET IN F2 TI F4
+Allowances
+Description Amount
+Employee Approval Department Head Approval Accountant/UPM Approval
+By electronically approving or signing, Employee and Production Company (Producer) approvers certify the timecard information is accurate. Producer approvers acknowledge they are authorized to act as approvers for Producer. 3/15/2021 12:35:46 PM
+D
