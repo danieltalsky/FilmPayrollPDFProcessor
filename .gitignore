@@ -1,4 +1,6 @@
+__pycache__
 .idea
+
 pdfs/inbox/*
 !pdfs/inbox/.gitkeep
 pdfs/processing/*
@@ -7,3 +9,5 @@ pdfs/outbox/check_copies/*
 !pdfs/outbox/check_copies/.gitkeep
 pdfs/outbox/time_cards/*
 !pdfs/outbox/time_cards/.gitkeep
+pdfs/outbox/final/*
+!pdfs/outbox/final/.gitkeep
