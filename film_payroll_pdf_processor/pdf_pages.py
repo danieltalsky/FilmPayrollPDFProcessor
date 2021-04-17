@@ -14,7 +14,6 @@ class CheckCopyPDFPage(PDFPage):
     payee_last_name: str
     payee_first_name: str
     invoice_number: str
-    check_amount_in_cents: int
 
     pdf_page_found: bool = False
 
@@ -27,7 +26,6 @@ class CheckCopyPDFPage(PDFPage):
             payee_last_name: str,
             payee_first_name: str,
             invoice_number: str,
-            check_amount_string: str
     ):
         self.month = month
         self.day = day
@@ -36,18 +34,6 @@ class CheckCopyPDFPage(PDFPage):
         self.payee_last_name = payee_last_name
         self.payee_first_name = payee_first_name
         self.invoice_number = invoice_number
-
-        # remove commas
-        check_amount_string = check_amount_string.replace(",", "")
-
-        # sometimes the amount is truncated like 1,293.3
-        amount_list = check_amount_string.split(".")
-        if len(amount_list[1]) < 2:
-            check_amount_string = check_amount_string + "0"
-
-        check_amount_string = check_amount_string.replace(".", "")
-
-        self.check_amount_in_cents = int(check_amount_string)
 
     @property
     def output_file_name(self):
@@ -58,8 +44,7 @@ class CheckCopyPDFPage(PDFPage):
         day = self.day
         year = self.year
         invoice = self.invoice_number
-        output_amount = "{:.2f}".format(self.check_amount_in_cents/100)
-        return f"CC-{last_name},{first_name}-{month}{day}{year}-{invoice}-{output_amount}.pdf"
+        return f"CC-{last_name},{first_name}-{month}{day}{year}-{invoice}.pdf"
 
     def merged_output_name(self, nth_check: int = 1):
         """
@@ -91,20 +76,21 @@ class TimeCardPDFPage(PDFPage):
 
     END_OF_BATCH_INDICATOR = "END of BATCH"
 
-    raw_page_text: str
+    raw_page_text: str = None
 
-    first_name: str = False
-    last_name: str = False
-    pay_period_day_string: str = False
-    pay_period_month_string: str = False
-    pay_period_year_string: str = False
-    grand_total_amount_in_cents: int = False
+    first_name: str = None
+    last_name: str = None
+    pay_period_day_string: str = None
+    pay_period_month_string: str = None
+    pay_period_year_string: str = None
+    invoice_number: str = None
 
-    def __init__(self, raw_page_text):
+    def __init__(self, raw_page_text, original_filepath):
         self.raw_page_text = raw_page_text
+        self.original_filepath = original_filepath
         self.extract_name()
         self.extract_pay_period_date()
-        self.extract_grand_total_amount()
+        self.extract_invoice_number()
 
     def verify_extracted_information(self):
         missing_information = []
@@ -112,15 +98,24 @@ class TimeCardPDFPage(PDFPage):
             missing_information.append("Payee name")
         if not self.pay_period_month_string or not self.pay_period_day_string or not self.pay_period_year_string:
             missing_information.append("Pay period ending date")
-        if not self.grand_total_amount_in_cents:
-            # missing_information.append("Grand total amount")
-            self.grand_total_amount_in_cents = 0
+        if not self.invoice_number:
+            missing_information.append("Invoice Number")
         if len(missing_information):
             missing = ", ".join(missing_information)
-            error = f"ERROR: Couldn't get the following information from this file: {missing}"
-            error += "Raw information from the PDF:"
+            error = f"\n\nERROR: Couldn't get the following information from this file: "
+            error += self.original_filepath
+            error += f"{missing}"
+            error += "Extracted text from the PDF for troubleshooting:"
             error += f"\n -------- \n {self.raw_page_text} \n ------- \n"
             raise Exception(error)
+
+    def is_2nd_page_time_card(self) -> bool:
+        """
+        Checks in a PDF time card page to see if the page is a 2nd page time card and should be discarded
+
+        :return:
+        """
+        return "Grand Total:" not in self.raw_page_text
 
     def is_end_of_batch(self) -> bool:
         """
@@ -132,14 +127,35 @@ class TimeCardPDFPage(PDFPage):
 
     @property
     def output_file_name(self):
-        # Format: "TC-Last,First-031321.pdf"
+        # Format: "TC-Last,First-031321-BBB123.pdf"
         first_name = self.first_name
         last_name = self.last_name
         day = self.pay_period_day_string
         month = self.pay_period_month_string
         year = self.pay_period_year_string
-        output_amount = "{:.2f}".format(self.grand_total_amount_in_cents/100)
-        return f"TC-{last_name},{first_name}-{month}{day}{year}-{output_amount}.pdf"
+        invoice_number = self.invoice_number
+        return f"TC-{last_name},{first_name}-{month}{day}{year}-{invoice_number}.pdf"
+
+    def extract_invoice_number(self):
+        """
+        Looks for an invoice number surrounded by underscores in the filename
+
+        Example:
+            pdfs/inbox/WE_041021_EYY896_CONSTRUCTION (2).pdf
+            =
+            _EYY896_
+            =
+            EYY896
+        """
+        # print(self.original_filepath)
+        match = re.search(
+            r"_[A-Z]{3}[0-9]{3}_",
+            self.original_filepath
+        )
+        if match:
+            invoice_number = match.group()
+            invoice_number = invoice_number.replace("_", "")
+            self.invoice_number = invoice_number
 
     def extract_name(self):
         # Example: "LIDDIARD, JOAQUIN SSN"
@@ -164,49 +180,3 @@ class TimeCardPDFPage(PDFPage):
                 self.pay_period_day_string = date_list[1]
                 self.pay_period_year_string = date_list[2]
                 break
-
-    def extract_grand_total_amount(self):
-        """
-        Extract the grand total to match with checks
-
-        When we see the "Grand Total" line, start collecting amounts
-
-        Example:
-            Grand Total:
-        165,687.3
-        165,687.3
-        Split Coding
-
-        Example:
-            Grand Total:
-        50.0 5,740.00
-        1,006.00
-        6,746.00
-        Split Coding
-
-        :return:
-        """
-        capture_total_amounts: bool = False
-        last_total_amount: str = False
-        for line in self.raw_page_text.splitlines():
-            # print(f"Line examined: {line}")
-            if "Split Coding" in line:
-                break
-            elif capture_total_amounts:
-                check_dollar_amount_pattern = r'^[0-9,]+\.[0-9]{1,2}$'
-                if re.match(check_dollar_amount_pattern, line):
-                    last_total_amount = line
-            elif "Grand Total" in line:
-                capture_total_amounts = True
-
-        if last_total_amount:
-            # remove commas
-            last_total_amount = last_total_amount.replace(",", "")
-
-            # sometimes the amount is truncated like 1,293.3
-            amount_list = last_total_amount.split(".")
-            if len(amount_list[1]) < 2:
-                last_total_amount = last_total_amount + "0"
-
-            last_total_amount = last_total_amount.replace(".", "")
-            self.grand_total_amount_in_cents = int(last_total_amount)

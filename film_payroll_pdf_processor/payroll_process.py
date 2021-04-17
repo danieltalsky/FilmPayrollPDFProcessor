@@ -2,8 +2,8 @@ import hashlib
 import os
 from pathlib import Path
 from shutil import copyfile
-import subprocess
 
+from film_payroll_pdf_processor.pdfbox_wrapper import PDFBox
 from film_payroll_pdf_processor.pdf_pages import TimeCardPDFPage, CheckCopyPDFPage
 
 INBOX_FOLDER_PATH = '/home/pdfs/inbox/'
@@ -41,9 +41,9 @@ class PayrollProcess:
 
         Example:
             Date:04/03/2021
-            PAGE,LAST,FIRST,INVOICE,AMOUNT
-            12,PINCKLEY,DENISE,EYM788,7094.97
-            13,PINCKLEY,DENISE,EYM788,4682.00
+            PAGE,LAST,FIRST,INVOICE
+            12,PINCKLEY,DENISE,EYM788
+            13,PINCKLEY,DENISE,EYM788
 
         :param check_copy_list_path:
         :return:
@@ -63,7 +63,7 @@ class PayrollProcess:
                 month = fields[0]
                 day = fields[1]
                 year = fields[2]
-            elif "PAGE,LAST,FIRST,INVOICE,AMOUNT" in line:
+            elif "PAGE,LAST,FIRST,INVOICE" in line:
                 pass
             else:
                 fields = line.split(",")
@@ -72,7 +72,6 @@ class PayrollProcess:
                     last = fields[1]
                     first = fields[2]
                     invoice = fields[3]
-                    amount = fields[4]
 
                     check_copy = CheckCopyPDFPage(
                         month=month,
@@ -82,7 +81,6 @@ class PayrollProcess:
                         payee_last_name=last,
                         payee_first_name=first,
                         invoice_number=invoice,
-                        check_amount_string=amount
                     )
                     check_copy_list.append(check_copy)
         return check_copy_list
@@ -116,13 +114,13 @@ class PayrollProcess:
         else:
             print(f" - WARNING: No check list found for {filepath}, need {expected_check_copy_list_path}")
 
-        hash_string, temp_path = cls._copy_to_temp_file(filepath)
-
         print(" - Splitting file into pages...")
+        hash_string, temp_path = cls._copy_to_temp_file(filepath)
         PDFBox.split_pages(temp_path)
         print(" - Finished splitting")
 
-        print(" - Looking for split pages...")
+        # print(" - Looking for split pages...")
+        duplicate_check_copy_set = set()
         for filename in os.listdir(PROCESSING_FOLDER_PATH):
             # PDFBox uses a filename-n.pdf naming convention by default
             page_prefix = f"{hash_string}-"
@@ -132,6 +130,22 @@ class PayrollProcess:
                 filepath = os.path.join(PROCESSING_FOLDER_PATH, filename)
                 for i, check_copy in enumerate(unmatched_check_copies):
                     if check_copy.page_number == page_number:
+                        # Check for a duplicate record that is the same name,date and invoice number and mark
+                        duplicate_check_copy_item = (
+                            check_copy.payee_first_name,
+                            check_copy.payee_last_name,
+                            check_copy.month,
+                            check_copy.day,
+                            check_copy.year,
+                            check_copy.invoice_number
+                        )
+                        if duplicate_check_copy_item in duplicate_check_copy_set:
+                            unmatched_check_copies[i].payee_first_name = check_copy.payee_first_name + "_DUPLICATE_TC"
+                            unmatched_check_copies[i].payee_last_name = check_copy.payee_last_name + "_DUPLICATE_TC"
+                            print(f'Detected duplicate!  Marking file: {check_copy.output_file_name}')
+                        else:
+                            duplicate_check_copy_set.add(duplicate_check_copy_item)
+
                         output_filepath = os.path.join(
                             OUTBOX_FOLDER_PATH,
                             OUTBOX_CHECK_COPY_FOLDER,
@@ -147,13 +161,14 @@ class PayrollProcess:
         return unmatched_check_copies
 
     @classmethod
-    def process_multi_page_time_card(cls, filepath: str) -> list:
+    def process_multi_page_time_card(cls, filepath: str, is_revision: bool = False) -> list:
         """
         Splits a multi-page PDF into individual pages and then processes those pages
 
         :param filepath:
         :return:
         """
+        original_filepath = filepath
         hash_string, temp_path = cls._copy_to_temp_file(filepath)
 
         # copy file to temp directory for processing
@@ -165,6 +180,7 @@ class PayrollProcess:
 
         print(" - Looking for split pages...")
         unmatched_time_cards = []
+        duplicate_time_card_set = set()
         for filename in os.listdir(PROCESSING_FOLDER_PATH):
             # PDFBox uses a filename-n.pdf naming convention by default
             page_prefix = f"{hash_string}-"
@@ -176,11 +192,31 @@ class PayrollProcess:
                 # print("--- start debugging time card text ---")
                 # print(text)
                 # print("--- end debugging time card text ---")
-                page = TimeCardPDFPage(text)
+                page = TimeCardPDFPage(text, original_filepath)
                 if page.is_end_of_batch():
-                    print(f"   - Detected END of BATCH page")
+                    print(f"   - Detected END of BATCH page, discarding")
+                elif page.is_2nd_page_time_card():
+                    print(f"   - Detected 2nd page timecard, discarding")
                 else:
                     page.verify_extracted_information()
+
+                    # Allow revisions to overwrite an existing CC
+                    if not is_revision:
+                        # Check for a duplicate record that is the same name,date and invoice number and mark
+                        duplicate_time_card_item = (
+                            page.first_name,
+                            page.last_name,
+                            page.pay_period_month_string,
+                            page.pay_period_day_string,
+                            page.pay_period_year_string,
+                            page.invoice_number
+                        )
+                        if duplicate_time_card_item in duplicate_time_card_set:
+                            page.first_name = page.first_name + "_DUPLICATE_CC"
+                            page.last_name = page.last_name + "_DUPLICATE_CC"
+                            print(f'Detected duplicate!  Marking file: {page.output_file_name}')
+                        else:
+                            duplicate_time_card_set.add(duplicate_time_card_item)
 
                     print(f"   - Detected TimeCard - Will be named: {page.output_file_name}")
                     output_filepath = os.path.join(
@@ -223,10 +259,10 @@ class PayrollProcess:
                 if (
                     tc.last_name == cc.payee_last_name and
                     tc.first_name == cc.payee_first_name and
-                    tc.grand_total_amount_in_cents == cc.check_amount_in_cents and
                     tc.pay_period_month_string == cc.month and
                     tc.pay_period_day_string == cc.day and
-                    tc.pay_period_year_string == cc.year
+                    tc.pay_period_year_string == cc.year and
+                    tc.invoice_number == cc.invoice_number
                 ):
                     print(f"- {tc.output_file_name} <matched> {cc.output_file_name}")
                     matched_time_cards.append(tc)
@@ -271,13 +307,14 @@ class PayrollProcess:
                         merged_temp_path,
                         final_output_path
                     )
-                    PayrollProcess._cleanup_temp_files(tc_hash)
                     PayrollProcess._cleanup_temp_files(cc_hash)
 
         # remove matches from unmatched lists
         for matched_tc in matched_time_cards:
+            # print(f"Removing matched time card: {matched_tc.last_name} - {matched_tc.invoice_number}")
             unmatched_time_cards.remove(matched_tc)
         for matched_cc in matched_check_copies:
+            # print(f"Removing matched check copy: {matched_cc.last_name}")
             unmatched_check_copies.remove(matched_cc)
 
         print("\nFinished.")
@@ -288,74 +325,3 @@ class PayrollProcess:
         print("\nThe following check copies were not matched to a time card:")
         for check_copy in sorted(unmatched_check_copies, key=lambda x: x.output_file_name):
             print(f" - {check_copy.output_file_name}")
-
-
-class PDFBox:
-    """ Abstraction for command line calls to PDFBox """
-
-    PDFBOX_JAR = "/root/pdfbox-app-2.0.23.jar"
-
-    @classmethod
-    def split_pages(cls, filepath: str):
-        """
-        Call PDFBox PDFSplit command line method ona a pdf with default options for a given filepath
-
-        :param filepath:
-        :return:
-        """
-        # print(f"   - Splitting PDF into pages:")
-        result = subprocess.run([
-            'java',
-            '-jar',
-            cls.PDFBOX_JAR,
-            'PDFSplit',
-            filepath
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # print(result.stdout)
-        # error_messages = result.stderr
-        # print(error_messages)
-
-    @classmethod
-    def merge_pages(cls, filepath_1: str, filepath_2: str, target_filepath: str):
-        """
-        Call PDFBox PDFMerger command line method to merge two PDFs
-
-        :param filepath_1:
-        :param filepath_2:
-        :param target_filepath:
-        :return:
-        """
-        # print(f"   - Splitting PDF into pages:")
-        result = subprocess.run([
-            'java',
-            '-jar',
-            cls.PDFBOX_JAR,
-            'PDFMerger',
-            filepath_1,
-            filepath_2,
-            target_filepath
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # print(result.stdout)
-        # error_messages = result.stderr
-        # print(error_messages)
-
-    @classmethod
-    def get_pdf_text(cls, filepath: str) -> str:
-        """
-        Call PDFBox ExtractText method on a pdf and return the text string extracted from the file
-
-        :param filepath:
-        :return:
-        """
-        result = subprocess.run([
-            'java',
-            '-jar',
-            cls.PDFBOX_JAR,
-            'ExtractText',
-            filepath,
-            '-console',
-            'true'
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output_string = result.stdout.decode('utf-8')
-        error_string = result.stderr
-        return output_string
